@@ -334,12 +334,26 @@ var METAS_CONFIG = {
 // Metas calculadas: base histórica Jul-Dez/25 × (1+5%)^mês
 // JAN/26 = base × 1.05¹
 var ABAS = {
-  frei:    {v:'VD - FREI SERAFIM',   d:'DESP. FREI SERAFIM',    label:'Frei Serafim',    meta:357103, metaDia:17005, cor:'#B8860B'},
-  eliseu:  {v:'VD - ELISEU MARTINS', d:'DESP. ELISEU MARTINS',   label:'Eliseu Martins',  meta:216871, metaDia:10327, cor:'#1E6B3A'},
-  petronio:{v:'VD - PETRÔNIO PORTELA',d:'DESP. PETRÔNIO PORTELA',label:'Universitária',meta:295668, metaDia:14079, cor:'#6B1A1A'},
+  frei:    {v:'VD - FREI SERAFIM',    d:'DESPESAS - FREI',          cx:'DESP CAIXA - FREI',     label:'Frei Serafim',
+            metaSemFex:17000, metaSab:10000, metaDom:0,
+            metaTeto:42000, metaWhats:0, metaLucro:0.22,
+            meta:357103, metaDia:17000, cor:'#B8860B'},
+  eliseu:  {v:'VD - ELISEU MARTINS',  d:'DESPESAS - ELISEU',        cx:'DESP CAIXA - ELISEU',   label:'Eliseu Martins',
+            metaSemFex:12000, metaSab:9000,  metaDom:0,
+            metaTeto:40000, metaWhats:0, metaLucro:0.21,
+            meta:216871, metaDia:12000, cor:'#1E6B3A'},
+  petronio:{v:'VD - PETRÔNIO PORTELA',d:'DESPESAS - UNIVERSITÁRIA', cx:'DESP CAIXA - UNIVERSITÁRIA', label:'Universitária',
+            metaSemFex:12000, metaSab:9000,  metaDom:9000,
+            metaTeto:20000, metaWhats:0, metaLucro:0.22,
+            meta:295668, metaDia:12000, cor:'#6B1A1A'},
 };
 
 // Histórico últimos 6 meses (Jul-Dez/25) para gráfico
+var HIST_PREV = {
+  frei:    [369000,319000,314000,323000,279000,334000,311000,300000],
+  eliseu:  [222000,191000,198000,215000,163000,188000,214000,172000],
+  petronio:[262000,270000,246000,277000,278000,273000,192000,242000],
+};
 var HIST_LABELS = ['Jul/25','Ago/25','Set/25','Out/25','Nov/25','Dez/25','Jan/26','Fev/26'];
 var HIST = {
   frei:    [388079, 336000, 330459, 340272, 293794, 351988, 327245, 315521],
@@ -429,19 +443,16 @@ function dc(id){if(CHARTS[id]){try{CHARTS[id].destroy();}catch(e){} delete CHART
 function gF(id){var e=el(id);return e?e.value:'';}
 
 function getDias(loja){
-  var d = STATE[loja]?STATE[loja].dias:[];
-  var fa = gF('f-ano'), fm = gF('f-mes'), fd = gF('f-dia');
-  if(fa) d = d.filter(function(x){return x.mes && x.mes.split('/')[1]===fa;});
-  if(fm) d = d.filter(function(x){return x.mes===fm;});
-  if(fd) d = d.filter(function(x){return x.dia_num===parseInt(fd);});
+  var d=STATE[loja]?STATE[loja].dias:[];
+  var fm=gF('f-mes'),fd=gF('f-dia');
+  if(fm) d=d.filter(function(x){return x.mes===fm;});
+  if(fd) d=d.filter(function(x){return x.dia_num===parseInt(fd);});
   return d;
 }
 function getDesp(loja){
   var d = STATE[loja]?STATE[loja].desp:[];
-  var fa = gF('f-ano'), fm = gF('f-mes'), fd = gF('f-dia');
-  if(fa) d = d.filter(function(x){return x.mes && x.mes.split('/')[1]===fa;});
+  var fm = gF('f-mes');
   if(fm) d = d.filter(function(x){return x.mes===fm;});
-  if(fd) d = d.filter(function(x){return x.dia_num===parseInt(fd);});
   return d;
 }
 
@@ -450,9 +461,36 @@ function getDesp(loja){
 // ═══════════════════════════════════════════════════════════════════════
 // ── Meta por dia da semana: replica exatamente AVERAGEIF($D:$D, dia, $K:$K)
 // Só chama DEPOIS que STATE[loja].dias já tem dados com receita real
-function calcMetasDia(diasArr){
-  // Retorna metas fixas por dia da semana (configuradas em METAS_CONFIG / aba METAS)
-  return METAS_CONFIG.dia;
+function getMetaDia(loja,wd){
+  var a=ABAS[loja]; if(!a) return 0;
+  if(wd==='SÁB') return a.metaSab;
+  if(wd==='DOM') return a.metaDom||0;
+  return a.metaSemFex;
+}
+
+function getMetaMensal(loja,mesAno){
+  try{var s=localStorage.getItem('mp_metas_mensais');
+    var mm=s?JSON.parse(s):{};
+    if(mm[loja]&&mm[loja][mesAno]) return mm[loja][mesAno];
+  }catch(e){}
+  return ABAS[loja]?ABAS[loja].meta:0;
+}
+
+function calcMetasDia(diasArr,loja){
+  if(loja&&ABAS[loja]){
+    var wds=['SEG','TER','QUA','QUI','SEX','SÁB','DOM'],m={};
+    wds.forEach(function(wd){m[wd]=getMetaDia(loja,wd);});
+    return m;
+  }
+  var grupos={};
+  diasArr.forEach(function(d){
+    if(d.receita>0){if(!grupos[d.dia])grupos[d.dia]=[];grupos[d.dia].push(d.receita);}
+  });
+  var medias={};
+  Object.keys(grupos).forEach(function(dw){
+    var arr=grupos[dw];medias[dw]=arr.reduce(function(s,v){return s+v;},0)/arr.length;
+  });
+  return medias;
 }
 
 function getSampleDias(loja){
@@ -524,58 +562,113 @@ function getSampleDesp(loja){
 // ═══════════════════════════════════════════════════════════════════════
 // PARSE — Google Sheets (SheetDB)
 // ═══════════════════════════════════════════════════════════════════════
-function parseVendas(rows){
-  var re=/^\d{2}[\/\-]\d{2}|^\d{4}[\/\-]\d{2}/; // aceita DD/MM/YYYY e YYYY-MM-DD
-  // 1ª passagem: lê campos brutos
-  var parsed = rows.filter(function(r){return re.test(String(r['DATA']||'').trim());}).map(function(r){
-    var rec=num(r['RECEITA BRUTA (R$)']||r['TOTAL\nDIA (R$)']||r['TOTAL DIA (R$)']||0);
-    var metaSheet=num(r['META DIA (R$)']||r['META\nDIA (R$)']||r['META DIA']||r['META\nDIA']||0);
-    var ds=String(r['DATA']).trim();
-    var dsD=normData(ds); // DD/MM/YYYY para exibição
-    return{data:dsD, mes:dataMes(ds), dia:String(r['DIA']||'').trim().toUpperCase(),
-      dia_num:diaNumDe(ds),
-      especie:num(r['ESPÉCIE\n(R$)']||r['ESPÉCIE (R$)']||r['ESPECIE (R$)']||0),
-      cartao:num(r['CARTÃO\n(R$)']||r['CARTÃO (R$)']||r['CARTAO (R$)']||0),
-      pix:num(r['PIX\n(R$)']||r['PIX (R$)']||0),
-      ifood:num(r['IFOOD\n(R$)']||r['IFOOD (R$)']||0),
-      whats:num(r['WHATSAPP\n(R$)']||r['WHATSAPP (R$)']||0),
-      despCx:num(r['DESP. CAIXA (R$)']||r['DESP. CAIXA']||0),
-      receita:rec, metaDiaSheet:metaSheet, metaDia:0, bateu:false, fechado:rec===0};
+function parseVendas(rows, loja){
+  function gf(r,keys){
+    for(var i=0;i<keys.length;i++){var v=r[keys[i]];if(v!==undefined&&v!==null&&v!=='')return v;}
+    return '';
+  }
+  function toNum(v){
+    if(typeof v==='number') return v;
+    if(!v) return 0;
+    return parseFloat(String(v).replace(/[R$\s.]/g,'').replace(',','.')) || 0;
+  }
+  function toMes(ds){
+    var p=String(ds).split('/');
+    var ns=['','JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+    return (ns[parseInt(p[1])]||'')+'/'+p[2];
+  }
+  var reData=/^\d{2}[\/\-]\d{2}/;
+  var parsed=rows.filter(function(r){
+    return reData.test(String(gf(r,['DATA'])||'').trim());
+  }).map(function(r){
+    var ds    = String(gf(r,['DATA'])).trim();
+    var dia   = String(gf(r,['DIA'])).trim().toUpperCase();
+    var despCx= toNum(gf(r,['DESP CAIXA\n(R$)','DESP CAIXA (R$)','DESP/CAIXA (R$)','DESP/CAIXA']));
+    var sang  = toNum(gf(r,['SANGRIA\n(R$)','SANGRIA (R$)','SANGRIA']));
+    var cart  = toNum(gf(r,['CARTÃO\n(R$)','CARTÃO (R$)','CARTAO (R$)','CARTÃO']));
+    var pix   = toNum(gf(r,['PIX\n(R$)','PIX (R$)','PIX']));
+    var ifood = toNum(gf(r,['IFOOD/VENDA ONLINE (R$)','IFOOD (R$)','VEND ONLINE (R$)']));
+    var extras= toNum(gf(r,['VENDAS\nEXTRAS (R$)','VENDAS EXTRAS (R$)','VEND.EXTRAS (R$)']));
+    var esp   = toNum(gf(r,['ESPÉCIE\n(R$)','ESPÉCIE (R$)','ESPECIE (R$)']));
+    if(!esp && (despCx||sang)) esp = despCx + sang;
+    var rec   = cart + pix + ifood + extras + esp;
+    var totSheet = toNum(gf(r,['TOTAL\nDIA (R$)','TOTAL DIA (R$)','TOTAL DIA']));
+    if(totSheet > 0) rec = totSheet;
+    var metaSheet = toNum(gf(r,['META\nDIA (R$)','META DIA (R$)','META DIA']));
+    var dn = parseInt(ds.split('/')[0]||'0');
+    return {
+      data:ds, dia:dia, dia_num:dn,
+      despCx:despCx, sangria:sang,
+      cartao:cart, pix:pix, ifood:ifood, extras:extras, especie:esp,
+      receita:rec, metaDiaSheet:metaSheet, metaDia:0, bateu:false, fechado:rec===0,
+      mes:toMes(ds)
+    };
   });
-  // 2ª passagem: define metaDia por dia da semana (replicando AVERAGEIF da planilha)
-  // Se a planilha já enviou meta calculada, usa ela. Senão, recalcula aqui.
-  var temMetaSheet = parsed.some(function(d){return d.metaDiaSheet > 0;});
-  var medias = calcMetasDia(parsed);
+  var medias=calcMetasDia(parsed,loja);
   return parsed.map(function(d){
-    if(temMetaSheet){
-      // Respeita o 0 da planilha — feriados/fechamentos têm meta zerada intencionalmente
-      d.metaDia = d.metaDiaSheet;
-    } else {
-      // Sem meta na planilha: usa valor fixo por dia da semana, exceto dias fechados
-      d.metaDia = d.fechado ? 0 : Math.round(medias[d.dia] || 0);
-    }
-    d.bateu = d.receita > 0 && d.metaDia > 0 && d.receita >= d.metaDia;
+    var md=d.metaDiaSheet>0?d.metaDiaSheet:(getMetaDia(loja,d.dia)||Math.round(medias[d.dia]||0));
+    d.metaDia=md;
+    d.bateu=d.receita>0&&md>0&&d.receita>=md;
     return d;
   });
 }
+
 function parseDespesas(rows){
+  function gf(r,keys){
+    for(var i=0;i<keys.length;i++){var v=r[keys[i]];if(v!==undefined&&v!==null&&v!=='')return v;}
+    return '';
+  }
+  function toNum(v){
+    if(typeof v==='number') return v;
+    if(!v) return 0;
+    return parseFloat(String(v).replace(/[R$\s.]/g,'').replace(',','.')) || 0;
+  }
+  function toMes(ds){
+    var p=String(ds).split('/');
+    var ns=['','JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+    return (ns[parseInt(p[1])]||'')+'/'+p[2];
+  }
+  var reData=/^\d{2}[\/\-]\d{2}/;
   return rows.filter(function(r){
-    return String(r['FORNECEDOR / DESCRIÇÃO']||r['FORNECEDOR']||'').trim()
-      && num(r['VALOR (R$)']||0)>0;
+    return reData.test(String(gf(r,['DATA'])||'').trim());
   }).map(function(r){
-    return{mes:String(r['MÊS/ANO']||'').trim(),
-      venc:String(r['DATA']||r['VENCIMENTO']||'').trim(),
-      dia_num:parseInt(String(r['DATA']||r['VENCIMENTO']||'01').substring(0,2))||0,
-      cc:String(r['CENTRO DE CUSTO']||'').trim(),
-      conta:String(r['CONTA']||'').trim(),
-      forn:String(r['FORNECEDOR / DESCRIÇÃO']||r['FORNECEDOR']||'').trim(),
-      val:num(r['VALOR (R$)']||0)};
-  });
+    var ds  =String(gf(r,['DATA'])).trim();
+    var forn=gf(r,['FORNECEDOR / DESCRIÇÃO','FORNECEDOR \/ DESCRIÇÃO','FORNECEDOR / DESCRICAO','FORNECEDOR']);
+    var val =toNum(gf(r,['VALOR (R$)','VALOR']));
+    var tipo=String(gf(r,['TIPO'])||'').toUpperCase();
+    var meta=String(gf(r,['ENTRA\nNA META?','ENTRA NA META?'])||'').toUpperCase();
+    var extra=tipo==='EXTRA'||meta==='NÃO'||meta==='NAO'||meta==='NÃO';
+    var cat =gf(r,['CATEGORIA']);
+    var forma=gf(r,['FORMA DE\nPAGAMENTO','FORMA DE PAGAMENTO']);
+    return {data:ds, mes:toMes(ds), forn:forn, val:val, cat:cat, tipo:tipo, extra:extra, forma:forma};
+  }).filter(function(d){return d.val>0;});
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// PARSE METAS — lê aba METAS e sobrescreve METAS_CONFIG em tempo real
-// ═══════════════════════════════════════════════════════════════════════
+function parseDespCaixa(rows){
+  function toNum(v){
+    if(typeof v==='number') return v;
+    if(!v) return 0;
+    return parseFloat(String(v).replace(/[R$\s.]/g,'').replace(',','.')) || 0;
+  }
+  function toMes(ds){
+    var p=String(ds).split('/');
+    var ns=['','JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+    return (ns[parseInt(p[1])]||'')+'/'+p[2];
+  }
+  var reData=/^\d{2}[\/\-]\d{2}/;
+  return rows.filter(function(r){
+    return reData.test(String(r['DATA']||'').trim());
+  }).map(function(r){
+    var ds=String(r['DATA']).trim();
+    return {
+      data:ds, mes:toMes(ds),
+      forn:r['FORNECEDOR / DESCRIÇÃO']||r['FORNECEDOR']||'',
+      val:toNum(r['VALOR (R$)']||r['VALOR']||0),
+      extra:false
+    };
+  }).filter(function(d){return d.val>0;});
+}
+
 function parseMetas(rows){
   var dmap = {META_SEG:'SEG',META_TER:'TER',META_QUA:'QUA',META_QUI:'QUI',
               META_SEX:'SEX',META_SAB:'SÁB',META_DOM:'DOM'};
@@ -598,26 +691,49 @@ function fetchSheet(sheet){
     .then(function(r){if(!r.ok)throw new Error(r.status); return r.json();});
 }
 
+function parseMetas(rows){
+  // Converte "22%" -> 0.22
+  function pct(v){ return parseFloat(String(v||'0').replace('%','').replace(',','.'))/100||0; }
+  var result = {};
+  rows.forEach(function(r){
+    var mes = String(r['MÊS']||'').trim().toUpperCase();
+    if(!mes) return;
+    result[mes] = {
+      frei:    pct(r['FREI SERAFIM']),
+      eliseu:  pct(r['ELISEU MARTINS']),
+      petronio:pct(r['UNIVERSITÁRIA']||r['PETRÔNIO PORTELA']||r['UNIVERSITARIA'])
+    };
+  });
+  return result; // {JAN:{frei:0.22,eliseu:0.21,petronio:0.22}, ...}
+}
 function carregarTudo(){
   var lojas=['frei','eliseu','petronio'];
   el('h-upd').textContent='Carregando...';
   // Carrega METAS primeiro para garantir valores corretos antes dos dados de venda
   fetchSheet('METAS').then(parseMetas).catch(function(){}).finally(function(){
-    Promise.all(lojas.reduce(function(arr,l){
+    // Carrega metas da planilha ADM Geral
+  fetchSheet('METAS 2026').then(parseMetas).then(function(metas){
+    STATE.metas = metas;
+  }).catch(function(){ STATE.metas = {}; });
+
+  Promise.all(lojas.reduce(function(arr,l){
       return arr.concat([
         fetchSheet(ABAS[l].v).then(parseVendas).catch(function(e){console.warn('[API] vendas '+l+' falhou:',e);return null;}),
         fetchSheet(ABAS[l].d).then(parseDespesas).catch(function(e){console.warn('[API] desp '+l+' falhou:',e);return null;}),
+      fetchSheet(ABAS[l].cx).then(parseDespCaixa).catch(function(){return[];}),
       ]);
     },[])).then(function(res){
       var usandoDemo = false;
       lojas.forEach(function(l,i){
-        var dias = res[i*2]&&res[i*2].length ? res[i*2] : null;
-        var desp = res[i*2+1]&&res[i*2+1].length ? res[i*2+1] : null;
+        var dias  = res[i*3]&&res[i*3].length   ? res[i*3]   : null;
+        var desp  = res[i*3+1]&&res[i*3+1].length ? res[i*3+1] : [];
+        var despCx= res[i*3+2]&&res[i*3+2].length ? res[i*3+2] : [];
         if(!dias){usandoDemo=true; console.warn('[Dashboard] '+l+': sem dados de vendas – usando amostra');}
         else console.log('[Dashboard] '+l+': '+dias.length+' dias carregados, meses:',
           [...new Set(dias.map(function(d){return d.mes;}))].join(', '));
-        STATE[l].dias = dias || getSampleDias(l);
-        STATE[l].desp = desp || getSampleDesp(l);
+        STATE[l].dias   = dias || getSampleDias(l);
+        STATE[l].desp   = desp || getSampleDesp(l);
+        STATE[l].despCx = despCx || [];
       });
       var badge = el('h-badge');
       if(usandoDemo && badge && !badge.textContent.includes('meta')){
@@ -631,7 +747,15 @@ function carregarTudo(){
       el('h-upd').textContent='Atualizado às '+now;
       atualizarFiltroAno();
       atualizarFiltroMes();
-      renderAll();
+      var fMes=el('f-mes');
+    if(fMes&&typeof buildMesOpts==='function'){
+      var cur=fMes.value;
+      fMes.innerHTML='<option value="">Todos os meses</option>'+buildMesOpts();
+      if(!Array.from(fMes.options).some(function(o){return o.value===cur;})){
+        if(fMes.options.length>1)fMes.selectedIndex=fMes.options.length-1;
+      }else{fMes.value=cur;}
+    }
+    renderAll();
     });
   });
 }
@@ -710,6 +834,23 @@ function trocarAno(){
   renderAll();
 }
 
+function buildMesOpts(){
+  var ORDEM={JAN:1,FEV:2,MAR:3,ABR:4,MAI:5,JUN:6,JUL:7,AGO:8,SET:9,OUT:10,NOV:11,DEZ:12};
+  var meses={};
+  ['frei','eliseu','petronio'].forEach(function(l){
+    (STATE[l]?STATE[l].dias:[]).forEach(function(d){if(d.mes)meses[d.mes]=true;});
+  });
+  return Object.keys(meses).sort(function(a,b){
+    var pa=a.split('/'),pb=b.split('/');
+    var ya=parseInt(pa[1]||0),yb=parseInt(pb[1]||0);
+    if(ya!==yb)return ya-yb;
+    return(ORDEM[pa[0]]||0)-(ORDEM[pb[0]]||0);
+  }).map(function(m){
+    var p=m.split('/');
+    return '<option value="'+m+'">'+p[0].charAt(0)+p[0].slice(1,3).toLowerCase()+'/'+p[1]+'</option>';
+  }).join('');
+}
+
 function buildFilters(){
   var isOwner = CUR.role === 'owner';
   var diasOpts = '<option value="">Todos os dias</option>';
@@ -772,6 +913,48 @@ function renderAll(){
 // ═══════════════════════════════════════════════════════════════════════
 // RENDER VENDAS — gerente vê só sua loja; proprietário vê via filtro
 // ═══════════════════════════════════════════════════════════════════════
+function calcLucro(loja, diasArr){
+  var a=ABAS[loja];
+  var desp  =(STATE[loja]?STATE[loja].desp  :[]).filter(function(d){return !d.extra;});
+  var despCx=(STATE[loja]?STATE[loja].despCx:[]);
+  var fm=gF('f-mes');
+  if(fm){
+    desp  =desp.filter(function(d){return d.mes===fm;});
+    despCx=despCx.filter(function(d){return d.mes===fm;});
+  }
+  var totVenda =diasArr.reduce(function(s,d){return s+(d.receita||0);},0);
+  var totExtras=diasArr.reduce(function(s,d){return s+(d.extras||0);},0);
+  var totDesp  =desp.reduce(function(s,d){return s+(d.val||0);},0);
+  var totDespCx=despCx.reduce(function(s,d){return s+(d.val||0);},0)
+               +diasArr.reduce(function(s,d){return s+(d.despCx||0);},0);
+  var receita  =totVenda+totExtras;
+  var lucro    =receita-totDesp-totDespCx;
+  var pctLucro =receita>0?lucro/receita:0;
+  var diasOp   =diasArr.filter(function(d){return !d.fechado;}).length;
+  var projecao =diasOp>0?(receita/diasOp)*26:0;
+  var lucroProj=projecao-(totDesp+totDespCx);
+  var pctProj  =projecao>0?lucroProj/projecao:0;
+  var teto=a.metaTeto||0;
+  var pctTeto=teto>0?totDespCx/teto:0;
+  return{
+    receita:receita,lucro:lucro,pctLucro:pctLucro,
+    metaLucro:(function(){
+    var fm=gF('f-mes');
+    if(fm&&STATE.metas){
+      var mes=fm.split('/')[0];
+      var lk=loja==='frei'?'frei':loja==='eliseu'?'eliseu':'petronio';
+      if(STATE.metas[mes]&&STATE.metas[mes][lk]) return STATE.metas[mes][lk];
+    }
+    return a.metaLucro||0;
+  })(),
+    projecao:projecao,pctProj:pctProj,lucroProj:lucroProj,
+    totDespCx:totDespCx,teto:teto,pctTeto:pctTeto,
+    bateuLucro:pctLucro>=(a.metaLucro||0)
+  };
+}
+
+function fmtPct2(v){return((v||0)*100).toFixed(1).replace('.',',')+' %';}
+
 function renderVendas(){
   var loja = FILIAL;
   var rawDias = STATE[loja]?STATE[loja].dias:[];
@@ -838,9 +1021,22 @@ function renderVendas(){
       +'<td class="tdr" style="color:'+(d.bateu?'var(--grn)':d.fechado?'var(--tx3)':'var(--red)')+'">'+( d.fechado?'—':fmtP(d.receita/(d.metaDia||1)))+'</td></tr>';
   }).join('');
 
-  var lucroKpi = CUR.role==='owner'
-    ? '<div class="kpi" style="--kt:var(--grn)"><div class="kpi-label">Lucro Op.</div><div class="kpi-val" style="color:var(--grn)">'+fmt(totR-totDC)+'</div><div class="kpi-sub">Margem '+fmtP((totR-totDC)/(totR||1))+'</div></div>'
-    : '';
+  var diasOpArr=diasOp.filter?diasOp:diasFiltrados.filter(function(d){return !d.fechado;});
+  var L=calcLucro(loja,diasOpArr);
+  var lucroKpi=CUR.role==='owner'?(
+    '<div class="kpi" style="--kt:'+(L.bateuLucro?'var(--grn)':'var(--red)')+'">'
+    +'<div class="kpi-label">% Lucro do Mês</div>'
+    +'<div class="kpi-val" style="color:'+(L.bateuLucro?'var(--grn)':'var(--red)')+'">'+fmtP(L.pctLucro)+'</div>'
+    +'<div class="kpi-sub">Meta: '+fmtP(L.metaLucro)+' · '+(L.bateuLucro?'✓ Atingida':'✗ Abaixo')+'</div></div>'
+    +'<div class="kpi" style="--kt:var(--blu)">'
+    +'<div class="kpi-label">Projeção Fechamento</div>'
+    +'<div class="kpi-val" style="color:var(--blu)">'+fmtP(L.pctProj)+'</div>'
+    +'<div class="kpi-sub">Se fechar hoje: '+fmt(L.lucroProj)+'</div></div>'
+    +'<div class="kpi" style="--kt:'+(L.pctTeto>=1?'var(--red)':L.pctTeto>=0.8?'var(--amb)':'var(--grn)')+'">'
+    +'<div class="kpi-label">Desp. Caixa / Teto</div>'
+    +'<div class="kpi-val" style="color:'+(L.pctTeto>=1?'var(--red)':L.pctTeto>=0.8?'var(--amb)':'var(--grn)')+'">'+fmtP(L.pctTeto)+'</div>'
+    +'<div class="kpi-sub">'+fmt(L.totDespCx)+' de '+fmt(L.teto)+'</div></div>'
+  ):'';
 
   // ── Meta cards: dia / semana / mês ──────────────────────────────────
   var dwNames = ['DOM','SEG','TER','QUA','QUI','SEX','SÁB'];
@@ -929,7 +1125,7 @@ function renderVendas(){
     +'<div class="meta-card-grid">'+metaCards+'</div>'
 
     +'<div class="sec-hdr">Indicadores do Mês</div>'
-    +'<div class="kpi-grid" style="grid-template-columns:repeat('+(CUR.role==='owner'?5:4)+',1fr)">'
+    +'<div class="kpi-grid" style="grid-template-columns:repeat('+(CUR.role==='owner'?7:4)+',1fr)">'
     +'<div class="kpi" style="--kt:var(--g2)"><div class="kpi-label">Faturamento</div><div class="kpi-val">'+fmt(totR)+'</div><div class="kpi-sub">Meta: '+fmt(metaM)+'</div></div>'
     +'<div class="kpi" style="--kt:'+(pct>=1?'var(--grn)':'var(--red)')+'"><div class="kpi-label">% Meta Mensal</div><div class="kpi-val" style="color:'+(pct>=1?'var(--grn)':'var(--red)')+'">'+fmtP(pct)+'</div><div class="kpi-sub">'+nOk+'/'+diasOp.length+' dias ✓</div></div>'
     +'<div class="kpi" style="--kt:var(--amb)"><div class="kpi-label">Ticket Médio/Dia</div><div class="kpi-val">'+fmt(ticket)+'</div><div class="kpi-sub">'+diasOp.length+' dias operacionais</div></div>'
@@ -937,6 +1133,23 @@ function renderVendas(){
     +'<div class="kpi" style="--kt:var(--brd2)"><div class="kpi-label">Dias c/ Meta</div><div class="kpi-val">'+nOk+'<span style="font-size:14px;color:var(--tx3)">/'+diasOp.length+'</span></div><div class="kpi-sub">'+fmtP(diasOp.length?nOk/diasOp.length:0)+' de aproveitamento</div></div>'
     +'</div>'
 
+    +(CUR.role==='owner'&&L&&L.teto>0?(
+    '<div class="sec-hdr">Acompanhamento — Despesa de Caixa</div>'
+    +'<div class="card">'
+    +'<div class="card-title">Despesa de Caixa vs Teto Mensal <span>'+ABAS[loja].label+'</span></div>'
+    +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">'
+    +'<div style="flex:1"><div class="rb"><div class="rbf" style="width:'+Math.min(L.pctTeto*100,100).toFixed(1)+'%;background:'+(L.pctTeto>=1?'var(--red)':L.pctTeto>=0.8?'var(--amb)':'var(--grn)')+'"></div></div></div>'
+    +'<div style="font-size:13px;font-weight:700;color:'+(L.pctTeto>=1?'var(--red)':L.pctTeto>=0.8?'var(--amb)':'var(--grn)')+'">'+fmtP(L.pctTeto)+'</div>'
+    +'</div>'
+    +'<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--tx3)">'
+    +'<span>Realizado: <strong style="color:var(--tx)">'+fmt(L.totDespCx)+'</strong></span>'
+    +'<span>Teto: <strong style="color:var(--tx)">'+fmt(L.teto)+'</strong></span>'
+    +'<span>Saldo: <strong style="color:'+(L.teto-L.totDespCx>=0?'var(--grn)':'var(--red)')+'">'+fmt(L.teto-L.totDespCx)+'</strong></span>'
+    +'</div>'
+    +(L.pctTeto>=0.8?'<div style="margin-top:10px;padding:8px 12px;background:#FEF3DC;border-radius:8px;font-size:11px;color:#7A4A00">⚠ Atenção: despesa de caixa atingiu '+fmtP(L.pctTeto)+' do teto mensal.</div>':'')
+    +'</div>'
+  ):'')
+  
     +'<div class="sec-hdr">Análise de Vendas</div>'
     +'<div class="g32">'
     +'<div class="card"><div class="card-title">Receita Diária vs Meta <span>'+allDias[0].data.substring(0,5)+'–'+allDias[allDias.length-1].data.substring(0,5)+'</span></div>'
@@ -1033,15 +1246,22 @@ function renderConsolidado(){
   var sR=0,sL=0,sD=0,sM=0,sOk=0,sDias=0;
   lojas.forEach(function(l){sR+=T[l].rec;sL+=T[l].lucro;sD+=T[l].desp;sM+=T[l].meta;sOk+=T[l].nOk;sDias+=T[l].nDias;});
 
-  var lojaCards = lojas.map(function(l){
+  var lojaCards=lojas.map(function(l){
+    var Ll=calcLucro(l,getDias(l).filter(function(d){return !d.fechado;}));
+    var mL=ABAS[l].metaLucro||0;
     return '<div class="loja-card" style="--kt:'+ABAS[l].cor+'">'
       +'<div class="loja-name" style="color:'+ABAS[l].cor+'">'+ABAS[l].label+'</div>'
       +'<div class="loja-val">'+fmt(T[l].rec)+'</div>'
-      +'<div class="meta-bar"><div class="meta-fill" style="width:'+Math.min(T[l].pct*100,100).toFixed(1)+'%;background:'+ABAS[l].cor+'"></div></div>'
-      +'<div style="font-size:9px;color:var(--tx3)">'+fmtP(T[l].pct)+' da meta · '+T[l].nOk+'/'+T[l].nDias+' dias ✓</div>'
-      +'<div style="font-size:10px;margin-top:5px;display:flex;gap:10px">'
-      +'<span>Lucro: <strong style="color:var(--grn)">'+fmt(T[l].lucro)+'</strong></span>'
-      +'<span>Margem: <strong>'+fmtP(T[l].marg)+'</strong></span></div>'
+      +'<div class="meta-bar"><div class="meta-fill" style="width:'+Math.min(T[l].pctMeta*100,100).toFixed(1)+'%;background:'+ABAS[l].cor+'"></div></div>'
+      +'<div style="font-size:9px;color:var(--tx3)">'+fmtP(T[l].pctMeta)+' da meta · '+T[l].nOk+'/'+T[l].nDias+' dias ✓</div>'
+      +'<div style="font-size:10px;margin-top:6px;display:flex;gap:10px">'
+      +'<span>% Lucro: <strong style="color:'+(Ll.pctLucro>=mL?'var(--grn)':'var(--red)')+'">'+fmtP(Ll.pctLucro)+'</strong></span>'
+      +'<span>Meta: <strong>'+fmtP(mL)+'</strong></span>'
+      +'</div>'
+      +'<div style="font-size:10px;margin-top:3px;display:flex;gap:10px">'
+      +'<span>Desp.Cx: <strong>'+fmt(Ll.totDespCx)+'</strong></span>'
+      +'<span style="color:'+(Ll.pctTeto>=1?'var(--red)':Ll.pctTeto>=0.8?'var(--amb)':'var(--grn)')+'">'+fmtP(Ll.pctTeto)+' teto</span>'
+      +'</div>'
       +'</div>';
   }).join('');
 
