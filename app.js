@@ -1,3 +1,8 @@
+'use strict';
+
+// ═══════════════════════════════════════════════════════════════════════
+// AUTH — logins e senhas conforme solicitado
+// ═══════════════════════════════════════════════════════════════════════
 var USERS = {
   'gerentefrei':       {pw:'frei99',    role:'manager', loja:'frei',     label:'Frei Serafim'},
   'gerenteeliseu':     {pw:'eliseu88',  role:'manager', loja:'eliseu',   label:'Eliseu Martins'},
@@ -422,7 +427,7 @@ function carregarTudo(){
       return arr.concat([
         fetchSheet(ABAS[l].v).then(parseVendas).catch(function(e){console.warn('[API] vendas '+l+' falhou:',e);return null;}),
         fetchSheet(ABAS[l].d).then(parseDespesas).catch(function(e){console.warn('[API] desp '+l+' falhou:',e);return null;}),
-      fetchSheet(ABAS[l].cx).then(parseDespCaixa).catch(function(){return[];}),
+      fetchSheet(ABAS[l].cx).then(parseDespCaixa).catch(function(e){console.warn('[API] despCx '+l+' (aba: '+ABAS[l].cx+') falhou:',e);return[];}),
       ]);
     },[])).then(function(res){
       var usandoDemo = false;
@@ -500,7 +505,7 @@ function buildTabs(){
       +'<button class="tab" onclick="showTab(\'vendas\',this)">📈 Vendas</button>'
       +'<button class="tab" onclick="showTab(\'despesas\',this)">💸 Despesas</button>'
       +'<button class="tab" onclick="showTab(\'orcamento\',this)">🎯 Orçamento</button>'
-      +'<button class="tab" onclick="showTab(\'investimentos\',this)">🔧 Investimentos</button>'
+      +'<button class="tab" onclick="showTab(\'investimentos\',this)">🔧 Despesas Extras</button>'
       +'<button class="tab" onclick="showTab(\'dre\',this)">📋 DRE</button>';
   } else {
     html = '<button class="tab act" onclick="showTab(\'vendas\',this)">📈 Vendas & Meta</button>';
@@ -1304,3 +1309,10 @@ function renderDRE(){
     +'<div style="color:var(--tx3)">'+fmt(invTotal)+'</div></div>'
     +'</div>';
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Como funciona o fluxo de dados — informação no painel de gerente
+// ═══════════════════════════════════════════════════════════════════════
+// O gerente preenche a planilha no Google Sheets → SheetDB API puxa os dados
+// → Dashboard atualiza automaticamente a cada hora
+
